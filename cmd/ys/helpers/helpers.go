@@ -1,3 +1,5 @@
+// Package helpers builds the human-readable version string from the build-time
+// metadata injected via ldflags, falling back to the latest published release.
 package helpers
 
 import (

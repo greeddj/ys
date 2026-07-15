@@ -1,3 +1,5 @@
+version: 2
+
 before:
   hooks:
     - go mod tidy
@@ -35,8 +37,6 @@ archives:
     files:
       - LICENSE
       - README.md
-      - config.example.yaml
-      - config.example.json
 
 checksum:
   name_template: 'checksums.txt'
@@ -107,7 +107,7 @@ homebrew_casks:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/greeddj/ys
-    description: "IMAP to IMAP synchronization tool"
+    description: "Search YAML files for a key and group identical results across files"
     license: MIT
     binaries:
       - dist/ys

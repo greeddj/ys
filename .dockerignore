@@ -1,5 +1,7 @@
 # Ignore everything by default
 *
 
-# Allow only the binary
-!ys
+# Allow only the release binary produced into ./dist by `just build_linux`
+!dist
+dist/*
+!dist/ys
