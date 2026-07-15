@@ -1,0 +1,125 @@
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: ys
+    main: cmd/ys/main.go
+    binary: dist/ys
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Commit={{.ShortCommit}}
+      - -X main.Date={{.Date}}
+      - -X main.BuiltBy=goreleaser
+
+archives:
+  - id: ys
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - config.example.yaml
+      - config.example.json
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+dockers:
+  - id: amd64
+    ids:
+      - ys
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/greeddj/{{ .ProjectName }}:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+
+  - id: arm64
+    ids:
+      - ys
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}-arm64"
+      - "ghcr.io/greeddj/{{ .ProjectName }}:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+
+docker_manifests:
+  - name_template: "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}-amd64"
+      - "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/greeddj/{{ .ProjectName }}:latest"
+    image_templates:
+      - "ghcr.io/greeddj/{{ .ProjectName }}:latest-amd64"
+      - "ghcr.io/greeddj/{{ .ProjectName }}:latest-arm64"
+
+homebrew_casks:
+  - name: ys
+    repository:
+      owner: greeddj
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/greeddj/ys
+    description: "IMAP to IMAP synchronization tool"
+    license: MIT
+    binaries:
+      - dist/ys
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/dist/ys"]
+          end
+
+release:
+  github:
+    owner: greeddj
+    name: ys
+  prerelease: auto
