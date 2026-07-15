@@ -1,0 +1,164 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestIsYAML(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"a.yaml", true},
+		{"a.yml", true},
+		{"A.YAML", true},
+		{"dir/b.YML", true},
+		{"a.txt", false},
+		{"a", false},
+		{"a.yamlx", false},
+		{"a.json", false},
+	}
+	for _, tt := range tests {
+		if got := isYAML(tt.path); got != tt.want {
+			t.Errorf("isYAML(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
+// writeFile creates dir/name with the given content, failing the test on error.
+func writeFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", p, err)
+	}
+	return p
+}
+
+func TestRunGroupsOrdersAndIgnoresComments(t *testing.T) {
+	dir := t.TempDir()
+	a := writeFile(t, dir, "a.yaml", "foo: enabled\n")
+	b := writeFile(t, dir, "b.yaml", "foo: enabled  # incidental comment\n")
+	c := writeFile(t, dir, "c.yaml", "foo: disabled\n")
+
+	var out, errb bytes.Buffer
+	if err := Run(context.Background(), &out, &errb, Options{Key: "foo", Roots: []string{dir}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// The most common value comes first; a and b group despite b's comment.
+	want := fmt.Sprintf(
+		"# 2 file(s):\n#   %s\n#   %s\nfoo: enabled\n---\n# 1 file(s):\n#   %s\nfoo: disabled\n",
+		a, b, c,
+	)
+	if out.String() != want {
+		t.Errorf("output mismatch:\n--- got ---\n%s\n--- want ---\n%s", out.String(), want)
+	}
+	if errb.Len() != 0 {
+		t.Errorf("unexpected stderr: %q", errb.String())
+	}
+}
+
+func TestRunPathAndRegexModes(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "v.yaml", "secrets:\n  crm:\n    settings:\n      dhcp: on-value\n  other:\n      dhcp: skip\n")
+
+	t.Run("path suffix", func(t *testing.T) {
+		var out bytes.Buffer
+		if err := Run(context.Background(), &out, &bytes.Buffer{}, Options{
+			Key: "settings.dhcp", Roots: []string{dir}, PathMode: true,
+		}); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !strings.Contains(out.String(), "secrets.crm.settings.dhcp: on-value") {
+			t.Errorf("path mode missed the suffix match:\n%s", out.String())
+		}
+		if strings.Contains(out.String(), "secrets.other.dhcp") {
+			t.Errorf("path mode matched the wrong key:\n%s", out.String())
+		}
+	})
+
+	t.Run("regexp", func(t *testing.T) {
+		var out bytes.Buffer
+		if err := Run(context.Background(), &out, &bytes.Buffer{}, Options{
+			Key: `^secrets\.other\.dhcp$`, Roots: []string{dir}, RegexMode: true,
+		}); err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if !strings.Contains(out.String(), "secrets.other.dhcp: skip") {
+			t.Errorf("regexp mode missed the match:\n%s", out.String())
+		}
+		if strings.Contains(out.String(), "settings.dhcp") {
+			t.Errorf("regexp mode matched the wrong key:\n%s", out.String())
+		}
+	})
+}
+
+func TestRunBadRegexp(t *testing.T) {
+	err := Run(context.Background(), &bytes.Buffer{}, &bytes.Buffer{}, Options{
+		Key: "(", Roots: []string{t.TempDir()}, RegexMode: true,
+	})
+	if err == nil {
+		t.Fatal("expected an error for an invalid regexp, got nil")
+	}
+}
+
+func TestRunReportsMissingRootButContinues(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.yaml", "foo: enabled\n")
+	missing := filepath.Join(dir, "does-not-exist")
+
+	var out, errb bytes.Buffer
+	if err := Run(context.Background(), &out, &errb, Options{Key: "foo", Roots: []string{missing, dir}}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(errb.String(), "does-not-exist") {
+		t.Errorf("missing root not reported to stderr: %q", errb.String())
+	}
+	if !strings.Contains(out.String(), "foo: enabled") {
+		t.Errorf("existing root not scanned after a missing one:\n%s", out.String())
+	}
+}
+
+func TestRunCanceledContext(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.yaml", "foo: enabled\n")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := Run(ctx, &bytes.Buffer{}, &bytes.Buffer{}, Options{Key: "foo", Roots: []string{dir}})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run with canceled context = %v, want context.Canceled", err)
+	}
+}
+
+func TestRunColorToggle(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.yaml", "foo: enabled\n")
+
+	const esc = "\x1b["
+
+	var colored bytes.Buffer
+	if err := Run(context.Background(), &colored, &bytes.Buffer{}, Options{Key: "foo", Roots: []string{dir}, Color: true}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !strings.Contains(colored.String(), esc) {
+		t.Errorf("Color:true produced no ANSI escapes:\n%q", colored.String())
+	}
+
+	var plain bytes.Buffer
+	if err := Run(context.Background(), &plain, &bytes.Buffer{}, Options{Key: "foo", Roots: []string{dir}, Color: false}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(plain.String(), esc) {
+		t.Errorf("Color:false leaked ANSI escapes:\n%q", plain.String())
+	}
+}

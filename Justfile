@@ -47,10 +47,10 @@ build: check lint test
 
 build_linux: check
 	@echo "===== Build {{PROJECT}} for Linux / amd64 ====="
-	mkdir -p dist
-	test -f dist/{{PROJECT}} && rm -f dist/{{PROJECT}} || echo "Not exist dist/{{PROJECT}}"
-	GOOS="linux" GOARCH="amd64" CGO_ENABLED=0 go build -trimpath -ldflags="{{LDFLAGS}}" -o dist/{{PROJECT}} ./cmd/{{ PROJECT }}/main.go
+	mkdir -p dist/linux/amd64
+	rm -f dist/linux/amd64/{{PROJECT}}
+	GOOS="linux" GOARCH="amd64" CGO_ENABLED=0 go build -trimpath -ldflags="{{LDFLAGS}}" -o dist/linux/amd64/{{PROJECT}} ./cmd/{{ PROJECT }}/main.go
 
 oci executor="podman" tag="local": build_linux
 	@echo "===== Build Local OCI {{PROJECT}} ====="
-	{{executor}} build -t {{PROJECT}}:{{tag}} -f Dockerfile .
+	{{executor}} build --platform=linux/amd64 -t {{PROJECT}}:{{tag}} -f Dockerfile dist

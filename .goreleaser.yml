@@ -8,7 +8,7 @@ before:
 builds:
   - id: ys
     main: cmd/ys/main.go
-    binary: dist/ys
+    binary: ys
     env:
       - CGO_ENABLED=0
     goos:
@@ -54,51 +54,24 @@ changelog:
       - Merge pull request
       - Merge branch
 
-dockers:
-  - id: amd64
+dockers_v2:
+  - id: ys
     ids:
       - ys
-    goos: linux
-    goarch: amd64
-    image_templates:
-      - "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/greeddj/{{ .ProjectName }}:latest-amd64"
     dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-
-  - id: arm64
-    ids:
-      - ys
-    goos: linux
-    goarch: arm64
-    image_templates:
-      - "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}-arm64"
-      - "ghcr.io/greeddj/{{ .ProjectName }}:latest-arm64"
-    dockerfile: Dockerfile
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{.Date}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-
-docker_manifests:
-  - name_template: "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}"
-    image_templates:
-      - "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}-amd64"
-      - "ghcr.io/greeddj/{{ .ProjectName }}:{{ .Version }}-arm64"
-
-  - name_template: "ghcr.io/greeddj/{{ .ProjectName }}:latest"
-    image_templates:
-      - "ghcr.io/greeddj/{{ .ProjectName }}:latest-amd64"
-      - "ghcr.io/greeddj/{{ .ProjectName }}:latest-arm64"
+    images:
+      - "ghcr.io/greeddj/{{ .ProjectName }}"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
 
 homebrew_casks:
   - name: ys
@@ -110,12 +83,12 @@ homebrew_casks:
     description: "Search YAML files for a key and group identical results across files"
     license: MIT
     binaries:
-      - dist/ys
+      - ys
     hooks:
       post:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/dist/ys"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ys"]
           end
 
 release:
