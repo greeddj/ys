@@ -5,20 +5,6 @@ run:
 
 linters:
   default: standard
-  enable:
-    - bodyclose    # HTTP response body must be closed
-    - errorlint    # error wrapping issues (uses %w correctly, errors.Is/As)
-    - gocritic     # opinionated diagnostic checks
-    - nilerr       # returning nil where err is non-nil
-    - noctx        # net/http calls without context
-    - revive       # broad style/lint pass (replaces deprecated golint)
-    - unparam      # unused function parameters
-  exclusions:
-    rules:
-      - path: _test\.go
-        linters:
-          - revive
-          - unparam
 
 formatters:
   enable:

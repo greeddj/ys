@@ -28,12 +28,13 @@ jobs:
         run: |
           go vet ./...;
           go tool staticcheck ./...;
+          go tool fieldalignment ./...;
           go tool govulncheck ./...;
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.11.4
           install-mode: binary
 
       - name: Run tests

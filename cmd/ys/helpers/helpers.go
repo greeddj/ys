@@ -3,19 +3,20 @@
 package helpers
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"runtime"
-	"time"
+)
+
+const (
+	defaultVersion = "latest"
+	defaultBuilder = "go"
 )
 
 // Version returns the formatted version string for the application.
 func Version(version, commit, date, builtBy string) string {
 	if version == "" {
-		version = latestTag()
+		version = defaultVersion
 	}
 
 	if builtBy == "" {
@@ -34,38 +35,27 @@ func Version(version, commit, date, builtBy string) string {
 	}
 }
 
-func latestTag() string {
-	if os.Getenv("YS_OFFLINE") != "" || os.Getenv("CI") != "" {
-		return defaultVersion
+// WantColor decides whether to colorize output. An explicit flag wins; otherwise
+// color is used only on a terminal and never when NO_COLOR is set.
+func WantColor(force, disable bool) bool {
+	switch {
+	case disable:
+		return false
+	case force:
+		return true
+	case os.Getenv("NO_COLOR") != "":
+		return false
+	default:
+		return isTerminal(os.Stdout)
 	}
-	client := &http.Client{Timeout: 500 * time.Millisecond}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, latestVersionURL, http.NoBody)
+}
+
+// isTerminal reports whether f is a character device, i.e. an interactive
+// terminal rather than a pipe or regular file.
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
 	if err != nil {
-		return defaultVersion
+		return false
 	}
-
-	req.Header.Set("User-Agent", userAgent)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return defaultVersion
-	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode != http.StatusOK {
-		return defaultVersion
-	}
-
-	var payload struct {
-		Tag string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return defaultVersion
-	}
-	if payload.Tag == "" {
-		return defaultVersion
-	}
-	return payload.Tag
+	return info.Mode()&os.ModeCharDevice != 0
 }

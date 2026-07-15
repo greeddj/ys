@@ -91,8 +91,8 @@ or files are reported to stderr and skipped, so one bad file never aborts a run.
 | --- | --- |
 | `-p`, `--path` | match `KEY` as a path suffix, e.g. `settings.dhcp` |
 | `-r`, `--regexp` | match `KEY` as a regexp over the full dotted path |
-| `-C`, `--colors` | force colorized output (default: only on a terminal) |
-| `-M`, `--no-colors` | disable colorized output |
+| `-c`, `--color` | force colorized output (default: only on a terminal) |
+| `-n`, `--no-color` | disable colorized output |
 | `-h`, `--help` | show help |
 | `-v`, `--version` | print the version |
 
@@ -120,7 +120,7 @@ ys -p resources.limits.cpu ./prod ./staging
 ys -r 'settings\.(dhcp|dns)$' ./envs
 
 # Force color through a pager.
-ys -C image ./envs | less -R
+ys -c image ./envs | less -R
 ```
 
 ## Output
@@ -144,8 +144,8 @@ text breaks any remaining ties.
 
 Output is colorized in the style of `yq` (keys, strings, numbers, booleans, and
 `null` each get their own color) only when writing to a terminal. Piping to a file
-or another program yields plain text. Set `-C` to force color on (for example
-through `less -R`), `-M` to force it off, or the [`NO_COLOR`](https://no-color.org)
+or another program yields plain text. Set `-c` to force color on (for example
+through `less -R`), `-n` to force it off, or the [`NO_COLOR`](https://no-color.org)
 environment variable to opt out globally.
 
 ### Exit codes

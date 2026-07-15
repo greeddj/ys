@@ -1,6 +1,6 @@
 module github.com/greeddj/ys
 
-go 1.26
+go 1.26.5
 
 tool (
 	golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment

@@ -2,11 +2,12 @@ PROJECT := "ys"
 VERSION := `sh -c 'git describe --tags --abbrev=0 2>/dev/null || git rev-parse --abbrev-ref HEAD'`
 COMMIT := `git rev-parse --short HEAD`
 DATE := `date -u +%Y-%m-%dT%H:%M:%SZ`
+BUILD_BY := "just"
 LDFLAGS := "-s -w" \
   + " -X main.Version=" + VERSION \
   + " -X main.Commit=" + COMMIT \
   + " -X main.Date=" + DATE \
-  + " -X main.BuiltBy=just"
+  + " -X main.BuiltBy" + BUILD_BY
 
 deps:
 	@echo "===== Check deps for {{PROJECT}} ====="
@@ -15,7 +16,7 @@ deps:
 
 lint:
 	@echo "===== Lint {{PROJECT}} ====="
-	golangci-lint run ./... --timeout=5m
+	golangci-lint run ./... --timeout="5m"
 
 fix:
 	@echo "===== Fix {{PROJECT}} ====="

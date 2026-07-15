@@ -21,11 +21,12 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - name: Install just
-        uses: extractions/setup-just@v3
-
-      - name: Run static checks
-        run: just check
+      - name: Run check
+        run: |
+          go vet ./...;
+          go tool staticcheck ./...;
+          go tool fieldalignment ./...;
+          go tool govulncheck ./...;
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9

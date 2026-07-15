@@ -54,7 +54,7 @@ func run() int {
 			&cli.BoolFlag{
 				Name:    "path",
 				Aliases: []string{"p"},
-				Usage:   "match KEY as a path suffix, e.g. settings.fozzy",
+				Usage:   "match KEY as a path suffix, e.g. settings.dhcp",
 			},
 			&cli.BoolFlag{
 				Name:    "regexp",
@@ -62,13 +62,13 @@ func run() int {
 				Usage:   "match KEY as a regexp over the full dotted path",
 			},
 			&cli.BoolFlag{
-				Name:    "colors",
-				Aliases: []string{"C"},
+				Name:    "color",
+				Aliases: []string{"c"},
 				Usage:   "force colorized output (default: only on a terminal)",
 			},
 			&cli.BoolFlag{
-				Name:    "no-colors",
-				Aliases: []string{"M"},
+				Name:    "no-color",
+				Aliases: []string{"n"},
 				Usage:   "disable colorized output",
 			},
 		},
@@ -122,7 +122,7 @@ func action(ctx context.Context, cmd *cli.Command) error {
 		Roots:     args.Tail(),
 		RegexMode: cmd.Bool("regexp"),
 		PathMode:  cmd.Bool("path"),
-		Color:     wantColor(cmd.Bool("colors"), cmd.Bool("no-colors")),
+		Color:     helpers.WantColor(cmd.Bool("colors"), cmd.Bool("no-colors")),
 	}
 
 	if err := app.Run(ctx, cmd.Writer, cmd.ErrWriter, opts); err != nil {
@@ -132,29 +132,4 @@ func action(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit(fmt.Sprintf("ys: %v", err), 2)
 	}
 	return nil
-}
-
-// wantColor decides whether to colorize output. An explicit flag wins; otherwise
-// color is used only on a terminal and never when NO_COLOR is set.
-func wantColor(force, disable bool) bool {
-	switch {
-	case disable:
-		return false
-	case force:
-		return true
-	case os.Getenv("NO_COLOR") != "":
-		return false
-	default:
-		return isTerminal(os.Stdout)
-	}
-}
-
-// isTerminal reports whether f is a character device, i.e. an interactive
-// terminal rather than a pipe or regular file.
-func isTerminal(f *os.File) bool {
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
 }
