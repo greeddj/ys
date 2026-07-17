@@ -1,9 +1,8 @@
 # ys
 
 [![CI](https://github.com/greeddj/ys/actions/workflows/ci.yml/badge.svg)](https://github.com/greeddj/ys/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/greeddj/ys/graph/badge.svg)](https://codecov.io/gh/greeddj/ys)
 [![Release](https://img.shields.io/github/v/release/greeddj/ys?sort=semver)](https://github.com/greeddj/ys/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/greeddj/ys)](https://goreportcard.com/report/github.com/greeddj/ys)
-[![License: MIT](https://img.shields.io/github/license/greeddj/ys)](LICENSE)
 
 `ys` searches YAML files for a key and groups identical results together, printing
 each unique `path: value` block once with the list of files it was found in.
