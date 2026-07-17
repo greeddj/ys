@@ -230,10 +230,10 @@ func TestRunRegexpMergesIdenticalValues(t *testing.T) {
 	// portal's extra key keeps it a separate group.
 	want := fmt.Sprintf(
 		"# 2 file(s):\n#   %s\n#   %s\n"+
-			"secrets.(compute|crm).settings.auth:\n  api_secret: 'Secret1'\n  crm_secret: Secret2\n"+
+			"secrets.(compute|crm).settings.auth:\n  api_secret: Secret1\n  crm_secret: Secret2\n"+
 			"---\n"+
 			"# 1 file(s):\n#   %s\n"+
-			"secrets.portal.settings.auth:\n  api_secret: 'Secret1'\n  crm_secret: Secret2\n  portal_secret: Secret3\n",
+			"secrets.portal.settings.auth:\n  api_secret: Secret1\n  crm_secret: Secret2\n  portal_secret: Secret3\n",
 		compute, crm, portal,
 	)
 	if out.String() != want {

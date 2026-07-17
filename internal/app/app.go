@@ -31,7 +31,7 @@ type Options struct {
 
 // hit is a single matched node.
 type hit struct {
-	node  *yaml.Node // matched value node, kept to render the final block
+	node  *yaml.Node // normalized matched value, kept to render the final block
 	path  string     // dotted path, e.g. services.api.http.timeout
 	value string     // canonical rendering of the value alone, groups identical values
 	segs  []string   // real path segments; a segment may itself contain dots

@@ -79,19 +79,9 @@ func scanFile(file string, match matcher) ([]hit, error) {
 			}
 			return nil, err
 		}
-		stripComments(&doc)
 		walk(&doc, nil, match, &hits)
 	}
 	return hits, nil
-}
-
-// stripComments clears comments recursively so that two values that differ only
-// by an incidental comment are treated (and printed) as the same value.
-func stripComments(n *yaml.Node) {
-	n.HeadComment, n.LineComment, n.FootComment = "", "", ""
-	for _, c := range n.Content {
-		stripComments(c)
-	}
 }
 
 // walk visits every node, recording a hit whenever its dotted path matches.
@@ -124,7 +114,9 @@ func childPath(path []string, seg string) []string {
 	return next
 }
 
-// check appends a hit when the node at path matches and renders cleanly.
+// check appends a hit when the node at path matches and renders cleanly. Only
+// the matched value is normalized, never the document, so the indexes in a path
+// keep pointing at the element the file really holds there.
 func check(n *yaml.Node, path []string, match matcher, out *[]hit) {
 	if len(path) == 0 {
 		return
@@ -133,11 +125,12 @@ func check(n *yaml.Node, path []string, match matcher, out *[]hit) {
 	if !match(dotted, path[len(path)-1]) {
 		return
 	}
-	value, err := renderValue(n)
+	node := normalize(n)
+	value, err := renderValue(node)
 	if err != nil {
 		return
 	}
-	*out = append(*out, hit{path: dotted, segs: path, value: value, node: n})
+	*out = append(*out, hit{path: dotted, segs: path, value: value, node: node})
 }
 
 // renderValue encodes val on its own, giving every value a canonical text used

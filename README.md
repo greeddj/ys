@@ -34,8 +34,11 @@ The most common value is printed first, so the single `legacy` outlier is obviou
 - Groups identical `path: value` blocks and lists every file each block came from.
 - In regexp mode, sibling paths with an identical value are merged into a single
   block whose path lists the alternatives: `services.(api|worker).resources.limits`.
-- Comment-insensitive: values that differ only by an incidental `# comment` are
-  treated as equal.
+- Notation-insensitive: values that differ only by an incidental `# comment`, by
+  quoting (`"x"`, `'x'`, `x`), by flow or block style, or by the order of a
+  block's keys and entries are treated as equal.
+- Type-preserving all the same: quoting that carries a type is kept, so the
+  string `"123"` never merges with the number `123`.
 - Handles multi-document files (`---`), nested maps, and sequences.
 - Deterministic, sorted output that is easy to diff and pipe.
 - yq-style colorized output on a terminal, plain text when piped.
@@ -177,6 +180,28 @@ valid YAML-ish text you can page or grep. Ordering is stable: files and groups a
 sorted naturally (`env1` before `env10`), related paths are kept together
 (a merged group sorts by its smallest constituent path), the most common value
 comes first, and block text breaks any remaining ties.
+
+### Canonical blocks
+
+A block is printed canonically rather than verbatim, which is what lets files
+that agree on the config but not on how they spell it collapse into one group:
+comments are dropped, quoting is reduced to what the value's type actually
+requires, flow collections (`{a: 1}`) are printed as blocks, and the keys and
+entries nested inside the block are sorted naturally.
+
+```console
+$ ys limits ./envs           # dev writes {memory: 512Mi, cpu: 500m} inline
+# 2 file(s):
+#   envs/dev.yaml
+#   envs/prod.yaml
+limits:
+  cpu: 500m
+  memory: 512Mi
+```
+
+Only the block content is canonicalized, never the paths: a sequence index still
+names the element the file really holds there, so `ys -r 'args\.0$'` reports each
+file's own first argument.
 
 ### Color
 
