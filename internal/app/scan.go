@@ -17,7 +17,8 @@ import (
 
 // collectFiles gathers the unique YAML files reachable from roots, walking
 // directories recursively. Unreadable roots are reported to errw and skipped;
-// the returned list is sorted for stable output.
+// the returned list is sorted in natural order so "staging2" precedes
+// "staging10" rather than following it.
 func collectFiles(errw io.Writer, roots []string) []string {
 	var files []string
 	seen := map[string]bool{}
@@ -47,7 +48,7 @@ func collectFiles(errw io.Writer, roots []string) []string {
 			add(r)
 		}
 	}
-	sort.Strings(files)
+	sort.Slice(files, func(i, j int) bool { return natLess(files[i], files[j]) })
 	return files
 }
 
@@ -132,15 +133,38 @@ func check(n *yaml.Node, path []string, match matcher, out *[]hit) {
 	if !match(dotted, path[len(path)-1]) {
 		return
 	}
-	block, err := render(dotted, n)
+	value, err := renderValue(n)
 	if err != nil {
 		return
 	}
-	*out = append(*out, hit{path: dotted, block: block})
+	*out = append(*out, hit{path: dotted, segs: path, value: value, node: n})
 }
+
+// renderValue encodes val on its own, giving every value a canonical text used
+// to recognize identical values found at different paths.
+func renderValue(val *yaml.Node) (string, error) {
+	var sb strings.Builder
+	enc := yaml.NewEncoder(&sb)
+	enc.SetIndent(2)
+	if err := enc.Encode(val); err != nil {
+		return "", err
+	}
+	if err := enc.Close(); err != nil {
+		return "", err
+	}
+	return sb.String(), nil
+}
+
+// yamlMaxSimpleKey is the yaml.v3 emitter's limit on simple (inline) mapping
+// keys in bytes; longer keys switch to the explicit "? key" form (see
+// yaml_emitter_check_simple_key in emitterc.go).
+const yamlMaxSimpleKey = 128
 
 // render encodes val as a single "path: value" YAML block.
 func render(path string, val *yaml.Node) (string, error) {
+	if len(path) > yamlMaxSimpleKey {
+		return renderLongKey(path, val)
+	}
 	doc := &yaml.Node{
 		Kind: yaml.MappingNode,
 		Content: []*yaml.Node{
@@ -158,4 +182,33 @@ func render(path string, val *yaml.Node) (string, error) {
 		return "", err
 	}
 	return strings.TrimRight(sb.String(), "\n"), nil
+}
+
+// renderLongKey keeps the documented one-line "path: value" shape for paths
+// beyond the emitter's simple-key limit (long merged alternations get there
+// easily): the value is encoded under a one-byte placeholder key, which is
+// then replaced with the real path.
+func renderLongKey(path string, val *yaml.Node) (string, error) {
+	block, err := render("k", val)
+	if err != nil {
+		return "", err
+	}
+	return quoteKey(path) + strings.TrimPrefix(block, "k"), nil
+}
+
+// quoteKey returns path formatted as a YAML mapping key: verbatim when every
+// byte is unambiguously plain-safe, single-quoted otherwise.
+func quoteKey(path string) string {
+	for i := 0; i < len(path); i++ {
+		switch c := path[i]; {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '.' || c == '_' || c == '/' || c == '(' || c == ')':
+		case (c == '-' || c == '|') && i > 0:
+			// safe mid-scalar, but as a first byte "- " or "|" would read as
+			// a sequence entry or a block scalar
+		default:
+			return "'" + strings.ReplaceAll(path, "'", "''") + "'"
+		}
+	}
+	return path
 }

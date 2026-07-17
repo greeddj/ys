@@ -7,7 +7,7 @@ LDFLAGS := "-s -w" \
   + " -X main.Version=" + VERSION \
   + " -X main.Commit=" + COMMIT \
   + " -X main.Date=" + DATE \
-  + " -X main.BuiltBy" + BUILD_BY
+  + " -X main.BuiltBy=" + BUILD_BY
 
 deps:
 	@echo "===== Check deps for {{PROJECT}} ====="

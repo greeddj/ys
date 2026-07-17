@@ -9,21 +9,21 @@
 each unique `path: value` block once with the list of files it was found in.
 
 It is built for auditing config drift across many near-identical deployment value
-files: instead of diffing everything by hand, you ask "what is `dhcp` set to
+files: instead of diffing everything by hand, you ask "what is the log `level`
 everywhere?" and immediately see the consensus value, the outliers, and exactly
 which files disagree.
 
 ```console
-$ ys dhcp ./envs
+$ ys level ./envs
 # 3 file(s):
 #   envs/dev/values.yaml
 #   envs/prod/values.yaml
 #   envs/staging/values.yaml
-secrets.crm.settings.dhcp: enabled
+observability.logging.level: info
 ---
 # 1 file(s):
 #   envs/legacy/values.yaml
-secrets.crm.settings.dhcp: disabled
+observability.logging.level: debug
 ```
 
 The most common value is printed first, so the single `legacy` outlier is obvious.
@@ -32,6 +32,8 @@ The most common value is printed first, so the single `legacy` outlier is obviou
 
 - Three matching modes: exact leaf, path suffix, or full-path regexp.
 - Groups identical `path: value` blocks and lists every file each block came from.
+- In regexp mode, sibling paths with an identical value are merged into a single
+  block whose path lists the alternatives: `services.(api|worker).resources.limits`.
 - Comment-insensitive: values that differ only by an incidental `# comment` are
   treated as equal.
 - Handles multi-document files (`---`), nested maps, and sequences.
@@ -59,7 +61,7 @@ Images are published to GitHub Container Registry for `linux/amd64` and
 `linux/arm64`. Mount the directory you want to scan:
 
 ```sh
-docker run --rm -v "$PWD:/work" -w /work ghcr.io/greeddj/ys:latest dhcp .
+docker run --rm -v "$PWD:/work" -w /work ghcr.io/greeddj/ys:latest level .
 ```
 
 ### Binaries
@@ -89,7 +91,7 @@ or files are reported to stderr and skipped, so one bad file never aborts a run.
 
 | Flag | Description |
 | --- | --- |
-| `-p`, `--path` | match `KEY` as a path suffix, e.g. `settings.dhcp` |
+| `-p`, `--path` | match `KEY` as a path suffix, e.g. `http.timeout` |
 | `-r`, `--regexp` | match `KEY` as a regexp over the full dotted path |
 | `-c`, `--color` | force colorized output (default: only on a terminal) |
 | `-n`, `--no-color` | disable colorized output |
@@ -99,13 +101,48 @@ or files are reported to stderr and skipped, so one bad file never aborts a run.
 ### Matching modes
 
 - **Default** matches `KEY` exactly against the **last** segment of a dotted path.
-  `ys dhcp` matches `secrets.crm.settings.dhcp` and `db.dhcp`, but not `dhcp_lease`.
+  `ys timeout` matches `services.api.http.timeout` and `database.timeout`, but not
+  `probes.readiness.timeoutSeconds`.
 - **`-p` (path suffix)** matches `KEY` against a trailing run of segments.
-  `ys -p settings.dhcp` matches `secrets.crm.settings.dhcp` but not `other.dhcp`.
+  `ys -p http.timeout` matches `services.api.http.timeout` but not `database.timeout`.
 - **`-r` (regexp)** matches `KEY` as a [regular expression](https://pkg.go.dev/regexp/syntax)
-  against the whole dotted path. `ys -r 'settings\.(dhcp|dns)$'`.
+  against the whole dotted path. `ys -r 'logging\.(level|format)$'`.
 
 When both `-r` and `-p` are given, `-r` wins.
+
+### Merging in regexp mode
+
+When a regexp matches several sibling paths that carry an identical value, the
+groups are merged into one block. Paths of equal depth that differ in exactly
+one segment are merged greedily into an alternation:
+
+```console
+$ ys -r 'resources\.limits$' ./envs
+# 4 file(s):
+#   envs/dev/values.yaml
+#   envs/legacy/values.yaml
+#   envs/prod/values.yaml
+#   envs/staging/values.yaml
+services.(api|worker).resources.limits:
+  cpu: 500m
+  memory: 512Mi
+---
+# 1 file(s):
+#   envs/legacy/values.yaml
+services.api.resources.limits:
+  cpu: 250m
+  memory: 256Mi
+```
+
+Both services agree on one limits block everywhere except `legacy`, which is the
+only file listed twice: its `worker` still carries the shared value, while its
+`api` has drifted to a smaller one.
+
+Only combinations that were actually found are merged: paths that differ in
+real depth (a key literally named `a.b` is one segment, not two) or in more
+than one segment stay separate, and a segment containing `(`, `|`, or `)`
+never joins an alternation, so the display never implies a path that does not
+exist.
 
 ### Examples
 
@@ -116,8 +153,8 @@ ys replicas ./charts
 # A specific nested key, several roots at once.
 ys -p resources.limits.cpu ./prod ./staging
 
-# Anything under settings that ends in dhcp or dns.
-ys -r 'settings\.(dhcp|dns)$' ./envs
+# Anything under logging that ends in level or format.
+ys -r 'logging\.(level|format)$' ./envs
 
 # Force color through a pager.
 ys -c image ./envs | less -R
@@ -136,9 +173,10 @@ shared block:
 ```
 
 Consecutive groups are separated by a `---` marker, so the whole output is itself
-valid YAML-ish text you can page or grep. Ordering is stable: groups with the same
-path are kept together, the most common value within a path comes first, and value
-text breaks any remaining ties.
+valid YAML-ish text you can page or grep. Ordering is stable: files and groups are
+sorted naturally (`env1` before `env10`), related paths are kept together
+(a merged group sorts by its smallest constituent path), the most common value
+comes first, and block text breaks any remaining ties.
 
 ### Color
 

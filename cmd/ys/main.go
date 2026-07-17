@@ -36,44 +36,7 @@ func run() int {
 		_, _ = fmt.Fprintln(c.Writer, Version)
 	}
 
-	cmd := &cli.Command{
-		Name:      "ys",
-		Usage:     "Simple YAML search across files",
-		UsageText: "ys [-r|-p] KEY PATH...",
-		Description: "Search the YAML files under each PATH for KEY and group identical\n" +
-			"results, printing each unique \"path: value\" block once with the list\n" +
-			"of files it was found in.\n\n" +
-			"By default KEY is matched exactly against the last path segment.",
-		HideHelpCommand:        true,
-		UseShortOptionHandling: true,
-		Version:                helpers.Version(Version, Commit, Date, BuiltBy),
-		// main owns the exit codes: suppress the framework's default os.Exit so
-		// every error flows back through run() below.
-		ExitErrHandler: func(context.Context, *cli.Command, error) {},
-		Flags: []cli.Flag{
-			&cli.BoolFlag{
-				Name:    "path",
-				Aliases: []string{"p"},
-				Usage:   "match KEY as a path suffix, e.g. settings.dhcp",
-			},
-			&cli.BoolFlag{
-				Name:    "regexp",
-				Aliases: []string{"r"},
-				Usage:   "match KEY as a regexp over the full dotted path",
-			},
-			&cli.BoolFlag{
-				Name:    "color",
-				Aliases: []string{"c"},
-				Usage:   "force colorized output (default: only on a terminal)",
-			},
-			&cli.BoolFlag{
-				Name:    "no-color",
-				Aliases: []string{"n"},
-				Usage:   "disable colorized output",
-			},
-		},
-		Action: action,
-	}
+	cmd := newCommand()
 
 	// user invokes Ctrl+\ when the program appears hung; the dump shows which
 	// goroutine is blocked and where.
@@ -109,6 +72,51 @@ func run() int {
 	return 0
 }
 
+// newCommand builds the ys CLI command with its flags and action.
+func newCommand() *cli.Command {
+	return &cli.Command{
+		Name:      "ys",
+		Usage:     "Simple YAML search across files",
+		UsageText: "ys [-r|-p] KEY PATH...",
+		Description: "Search the YAML files under each PATH for KEY and group identical\n" +
+			"results, printing each unique \"path: value\" block once with the list\n" +
+			"of files it was found in.\n\n" +
+			"By default KEY is matched exactly against the last path segment.\n\n" +
+			"In regexp mode, sibling paths of equal depth that differ in a single\n" +
+			"segment and carry an identical value are merged into one block whose\n" +
+			"path lists the alternatives, e.g. services.(api|worker).resources.limits.",
+		HideHelpCommand:        true,
+		UseShortOptionHandling: true,
+		Version:                helpers.Version(Version, Commit, Date, BuiltBy),
+		// main owns the exit codes: suppress the framework's default os.Exit so
+		// every error flows back through run() below.
+		ExitErrHandler: func(context.Context, *cli.Command, error) {},
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:    "path",
+				Aliases: []string{"p"},
+				Usage:   "match KEY as a path suffix, e.g. http.timeout",
+			},
+			&cli.BoolFlag{
+				Name:    "regexp",
+				Aliases: []string{"r"},
+				Usage:   "match KEY as a regexp over the full dotted path",
+			},
+			&cli.BoolFlag{
+				Name:    "color",
+				Aliases: []string{"c"},
+				Usage:   "force colorized output (default: only on a terminal)",
+			},
+			&cli.BoolFlag{
+				Name:    "no-color",
+				Aliases: []string{"n"},
+				Usage:   "disable colorized output",
+			},
+		},
+		Action: action,
+	}
+}
+
 // action parses the positional KEY and PATH arguments and runs the search.
 func action(ctx context.Context, cmd *cli.Command) error {
 	args := cmd.Args()
@@ -122,7 +130,7 @@ func action(ctx context.Context, cmd *cli.Command) error {
 		Roots:     args.Tail(),
 		RegexMode: cmd.Bool("regexp"),
 		PathMode:  cmd.Bool("path"),
-		Color:     helpers.WantColor(cmd.Bool("colors"), cmd.Bool("no-colors")),
+		Color:     helpers.WantColor(cmd.Bool("color"), cmd.Bool("no-color")),
 	}
 
 	if err := app.Run(ctx, cmd.Writer, cmd.ErrWriter, opts); err != nil {

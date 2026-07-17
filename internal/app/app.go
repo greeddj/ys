@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Options configures a single search run.
@@ -17,25 +19,45 @@ type Options struct {
 	Key string
 	// Roots are the files and directories to scan.
 	Roots []string
-	// RegexMode matches Key as a regexp against the full dotted path.
+	// RegexMode matches Key as a regexp against the full dotted path. Paths of
+	// equal depth that differ in one segment and carry an identical value are
+	// merged into a single block, e.g. services.(api|worker).resources.limits.
 	RegexMode bool
-	// PathMode matches Key as a path suffix, e.g. settings.fozzy.
+	// PathMode matches Key as a path suffix, e.g. http.timeout.
 	PathMode bool
 	// Color colorizes the output in the style of yq.
 	Color bool
 }
 
-// hit is a single matched node rendered as a "path: value" block.
+// hit is a single matched node.
 type hit struct {
-	path  string // dotted path, e.g. secrets.crm.settings.fozzy
-	block string // rendered "path: value" YAML block
+	node  *yaml.Node // matched value node, kept to render the final block
+	path  string     // dotted path, e.g. services.api.http.timeout
+	value string     // canonical rendering of the value alone, groups identical values
+	segs  []string   // real path segments; a segment may itself contain dots
 }
 
-// group collects the files that share one identical rendered block.
-type group struct {
+// pathEntry accumulates the files where one path carries one value. segs keeps
+// the real segments so merging never confuses a key containing a literal dot
+// with actual nesting.
+type pathEntry struct {
 	path  string
-	block string
+	segs  []string
 	files []string
+}
+
+// valueGroup collects every path (and its files) carrying one identical value.
+type valueGroup struct {
+	node   *yaml.Node
+	byPath map[string]*pathEntry
+	paths  []*pathEntry
+}
+
+// group is one printed block with the files it was found in.
+type group struct {
+	sortPath string // natural-sort anchor: the smallest constituent path
+	block    string // rendered "path: value" YAML block
+	files    []string
 }
 
 // Run scans the YAML files under opts.Roots for opts.Key and writes the grouped
@@ -50,8 +72,8 @@ func Run(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 
 	files := collectFiles(stderr, opts.Roots)
 
-	groupsByBlock := map[string]*group{}
-	var groups []*group
+	valueGroups := map[string]*valueGroup{}
+	var order []*valueGroup
 	for _, f := range files {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -62,15 +84,38 @@ func Run(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 			continue
 		}
 		for _, h := range hits {
-			g, ok := groupsByBlock[h.block]
+			vg, ok := valueGroups[h.value]
 			if !ok {
-				g = &group{path: h.path, block: h.block}
-				groupsByBlock[h.block] = g
-				groups = append(groups, g)
+				vg = &valueGroup{node: h.node, byPath: map[string]*pathEntry{}}
+				valueGroups[h.value] = vg
+				order = append(order, vg)
 			}
-			if n := len(g.files); n == 0 || g.files[n-1] != f {
-				g.files = append(g.files, f)
+			pe, ok := vg.byPath[h.path]
+			if !ok {
+				pe = &pathEntry{path: h.path, segs: h.segs}
+				vg.byPath[h.path] = pe
+				vg.paths = append(vg.paths, pe)
 			}
+			if n := len(pe.files); n == 0 || pe.files[n-1] != f {
+				pe.files = append(pe.files, f)
+			}
+		}
+	}
+
+	var groups []*group
+	for _, vg := range order {
+		for _, cl := range clusterPaths(vg.paths, opts.RegexMode) {
+			display := cl.display()
+			block, err := render(display, vg.node)
+			if err != nil {
+				_, _ = fmt.Fprintf(stderr, "# %s: %v\n", display, err)
+				continue
+			}
+			groups = append(groups, &group{
+				sortPath: cl.entries[0].path,
+				block:    block,
+				files:    mergedFiles(cl.entries),
+			})
 		}
 	}
 
@@ -79,13 +124,14 @@ func Run(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 	return nil
 }
 
-// sortGroups orders groups so identical paths are adjacent, the most common
-// value within a path comes first, and value text breaks ties for stable output.
+// sortGroups orders groups so related paths are adjacent (a merged cluster is
+// anchored at its smallest constituent path), the most common value comes
+// first, and block text breaks ties for stable output.
 func sortGroups(groups []*group) {
 	sort.Slice(groups, func(i, j int) bool {
 		a, b := groups[i], groups[j]
-		if a.path != b.path {
-			return a.path < b.path
+		if a.sortPath != b.sortPath {
+			return natLess(a.sortPath, b.sortPath)
 		}
 		if len(a.files) != len(b.files) {
 			return len(a.files) > len(b.files)
