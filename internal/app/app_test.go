@@ -101,6 +101,49 @@ func TestRunPathAndRegexModes(t *testing.T) {
 	})
 }
 
+// TestRunSubstitutionCollapsesValues is the end-to-end promise of -s: blocks
+// that differ only in an environment name inside the value collapse into one
+// group once the substitution rewrites it, while untouched values keep their
+// own group. Paths are never substituted; the collapsed group still merges its
+// sibling paths into an alternation.
+func TestRunSubstitutionCollapsesValues(t *testing.T) {
+	dir := t.TempDir()
+	d1 := writeFile(t, dir, "dev1.yaml", "envs:\n  dev1:\n    env_name: dev1\n")
+	d2 := writeFile(t, dir, "dev2.yaml", "envs:\n  dev2:\n    env_name: dev2\n")
+	sb := writeFile(t, dir, "sandbox.yaml", "envs:\n  sandbox1:\n    env_name: sandbox1\n")
+
+	var out, errb bytes.Buffer
+	if err := Run(context.Background(), &out, &errb, Options{
+		Key:       `^envs\.[^.]+\.env_name$`,
+		Roots:     []string{dir},
+		RegexMode: true,
+		Subs:      []string{`s/dev\d+/{{ .Release.Namespace }}/`},
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	want := fmt.Sprintf(
+		"# 2 file(s):\n#   %s\n#   %s\nenvs.(dev1|dev2).env_name: '{{ .Release.Namespace }}'\n"+
+			"---\n# 1 file(s):\n#   %s\nenvs.sandbox1.env_name: sandbox1\n",
+		d1, d2, sb,
+	)
+	if out.String() != want {
+		t.Errorf("output mismatch:\n--- got ---\n%s\n--- want ---\n%s", out.String(), want)
+	}
+	if errb.Len() != 0 {
+		t.Errorf("unexpected stderr: %q", errb.String())
+	}
+}
+
+func TestRunBadSubstitution(t *testing.T) {
+	err := Run(context.Background(), &bytes.Buffer{}, &bytes.Buffer{}, Options{
+		Key: "foo", Roots: []string{t.TempDir()}, Subs: []string{"nope"},
+	})
+	if err == nil {
+		t.Fatal("expected an error for an invalid substitution, got nil")
+	}
+}
+
 func TestRunBadRegexp(t *testing.T) {
 	err := Run(context.Background(), &bytes.Buffer{}, &bytes.Buffer{}, Options{
 		Key: "(", Roots: []string{t.TempDir()}, RegexMode: true,

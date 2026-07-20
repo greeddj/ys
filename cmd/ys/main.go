@@ -77,17 +77,24 @@ func newCommand() *cli.Command {
 	return &cli.Command{
 		Name:      "ys",
 		Usage:     "Simple YAML search across files",
-		UsageText: "ys [-r|-p] KEY PATH...",
+		UsageText: "ys [-r|-p] [-s SUB]... KEY PATH...",
 		Description: "Search the YAML files under each PATH for KEY and group identical\n" +
 			"results, printing each unique \"path: value\" block once with the list\n" +
 			"of files it was found in.\n\n" +
 			"By default KEY is matched exactly against the last path segment.\n\n" +
 			"In regexp mode, sibling paths of equal depth that differ in a single\n" +
 			"segment and carry an identical value are merged into one block whose\n" +
-			"path lists the alternatives, e.g. services.(api|worker).resources.limits.",
+			"path lists the alternatives, e.g. services.(api|worker).resources.limits.\n\n" +
+			"Each -s substitution rewrites the values inside every matched block\n" +
+			"before grouping, so blocks differing only in, say, an environment name\n" +
+			"collapse into one: -s 's/dev\\d+/{{ .Release.Namespace }}/'.",
 		HideHelpCommand:        true,
 		UseShortOptionHandling: true,
-		Version:                helpers.Version(Version, Commit, Date, BuiltBy),
+		// Slice flags split their value on commas by default, which would break
+		// any -s substitution containing a comma, e.g. a {2,5} quantifier. One
+		// expression per -s occurrence instead.
+		DisableSliceFlagSeparator: true,
+		Version:                   helpers.Version(Version, Commit, Date, BuiltBy),
 		// main owns the exit codes: suppress the framework's default os.Exit so
 		// every error flows back through run() below.
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
@@ -101,6 +108,11 @@ func newCommand() *cli.Command {
 				Name:    "regexp",
 				Aliases: []string{"r"},
 				Usage:   "match KEY as a regexp over the full dotted path",
+			},
+			&cli.StringSliceFlag{
+				Name:    "sub",
+				Aliases: []string{"s"},
+				Usage:   "substitute values inside each block: sed-style 's/RE/REPL/', repeatable",
 			},
 			&cli.BoolFlag{
 				Name:    "color",
@@ -128,6 +140,7 @@ func action(ctx context.Context, cmd *cli.Command) error {
 	opts := app.Options{
 		Key:       args.First(),
 		Roots:     args.Tail(),
+		Subs:      cmd.StringSlice("sub"),
 		RegexMode: cmd.Bool("regexp"),
 		PathMode:  cmd.Bool("path"),
 		Color:     helpers.WantColor(cmd.Bool("color"), cmd.Bool("no-color")),

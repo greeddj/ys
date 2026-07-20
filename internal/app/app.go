@@ -19,6 +19,11 @@ type Options struct {
 	Key string
 	// Roots are the files and directories to scan.
 	Roots []string
+	// Subs are sed-style substitution expressions, s/RE/REPL/, applied in
+	// order to the values inside each matched block before grouping, so blocks
+	// differing only in, say, an environment name collapse into one. Keys and
+	// paths are never rewritten.
+	Subs []string
 	// RegexMode matches Key as a regexp against the full dotted path. Paths of
 	// equal depth that differ in one segment and carry an identical value are
 	// merged into a single block, e.g. services.(api|worker).resources.limits.
@@ -62,10 +67,14 @@ type group struct {
 
 // Run scans the YAML files under opts.Roots for opts.Key and writes the grouped
 // results to stdout. Problems reading individual roots or files are reported to
-// stderr and skipped; only an invalid key (bad regexp) or a cancelled context
-// aborts the run.
+// stderr and skipped; only an invalid key (bad regexp), an invalid substitution,
+// or a cancelled context aborts the run.
 func Run(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 	match, err := buildMatcher(opts.Key, opts.RegexMode, opts.PathMode)
+	if err != nil {
+		return err
+	}
+	subs, err := parseSubs(opts.Subs)
 	if err != nil {
 		return err
 	}
@@ -78,7 +87,7 @@ func Run(ctx context.Context, stdout, stderr io.Writer, opts Options) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		hits, err := scanFile(f, match)
+		hits, err := scanFile(f, match, subs)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "# %s: %v\n", f, err)
 			continue

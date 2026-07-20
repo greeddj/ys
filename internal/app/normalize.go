@@ -15,7 +15,20 @@ import (
 // keep its type: "123" stays a quoted string and never merges with the number
 // 123, and "" stays an empty string instead of collapsing to null. Anchors and
 // aliases are copied verbatim, keeping a block's rendering unchanged.
-func normalize(n *yaml.Node) *yaml.Node {
+//
+// Each substitution in subs rewrites the values of the copy - the matched block
+// itself when it is a scalar, a mapping's values, a sequence's elements - and is
+// applied before the surrounding collection is sorted, so grouping and ordering
+// both see the substituted text. Keys are never rewritten. A scalar changed by
+// a substitution becomes a string, whatever its original type was.
+func normalize(n *yaml.Node, subs []subst) *yaml.Node {
+	return normalizeIn(n, subs, true)
+}
+
+// normalizeIn copies n applying the normalize rules, substituting only while
+// value stays true: it starts true at the matched block and is dropped for a
+// mapping key and everything inside it.
+func normalizeIn(n *yaml.Node, subs []subst, value bool) *yaml.Node {
 	out := &yaml.Node{
 		Kind:   n.Kind,
 		Tag:    n.Tag,
@@ -23,12 +36,18 @@ func normalize(n *yaml.Node) *yaml.Node {
 		Anchor: n.Anchor,
 		Alias:  n.Alias,
 	}
+	if value && n.Kind == yaml.ScalarNode {
+		if v := applySubs(n.Value, subs); v != n.Value {
+			out.Value = v
+			out.Tag = "!!str"
+		}
+	}
 	if len(n.Content) == 0 {
 		return out
 	}
 	out.Content = make([]*yaml.Node, len(n.Content))
 	for i, c := range n.Content {
-		out.Content[i] = normalize(c)
+		out.Content[i] = normalizeIn(c, subs, value && (n.Kind != yaml.MappingNode || i%2 == 1))
 	}
 	switch n.Kind {
 	case yaml.MappingNode:

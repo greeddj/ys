@@ -17,7 +17,7 @@ func normalized(t *testing.T, src string) string {
 	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
 		t.Fatalf("unmarshal %q: %v", src, err)
 	}
-	out, err := renderValue(normalize(doc.Content[0]))
+	out, err := renderValue(normalize(doc.Content[0], nil))
 	if err != nil {
 		t.Fatalf("render %q: %v", src, err)
 	}
@@ -125,7 +125,7 @@ func TestNormalizeKeepsAliases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("render %s: %v", key, err)
 		}
-		after, err := renderValue(normalize(m.Content[i+1]))
+		after, err := renderValue(normalize(m.Content[i+1], nil))
 		if err != nil {
 			t.Fatalf("render normalized %s: %v", key, err)
 		}

@@ -33,6 +33,9 @@ The most common value is printed first, so the single `legacy` outlier is obviou
 - Groups identical `path: value` blocks and lists every file each block came from.
 - In regexp mode, sibling paths with an identical value are merged into a single
   block whose path lists the alternatives: `services.(api|worker).resources.limits`.
+- Sed-style substitutions (`-s 's/dev\d+/{{ .Release.Namespace }}/'`) rewrite the
+  values inside each matched block before grouping, collapsing blocks that differ
+  only in, say, an environment name.
 - Notation-insensitive: values that differ only by an incidental `# comment`, by
   quoting (`"x"`, `'x'`, `x`), by flow or block style, or by the order of a
   block's keys and entries are treated as equal.
@@ -82,7 +85,7 @@ go build -o ys ./cmd/ys
 ## Usage
 
 ```text
-ys [-r|-p] KEY PATH...
+ys [-r|-p] [-s SUB]... KEY PATH...
 ```
 
 `KEY` is the key to search for; each `PATH` is a file or a directory. Directories
@@ -95,6 +98,7 @@ or files are reported to stderr and skipped, so one bad file never aborts a run.
 | --- | --- |
 | `-p`, `--path` | match `KEY` as a path suffix, e.g. `http.timeout` |
 | `-r`, `--regexp` | match `KEY` as a regexp over the full dotted path |
+| `-s`, `--sub` | substitute values inside each block: sed-style `s/RE/REPL/`, repeatable |
 | `-c`, `--color` | force colorized output (default: only on a terminal) |
 | `-n`, `--no-color` | disable colorized output |
 | `-h`, `--help` | show help |
@@ -146,6 +150,50 @@ than one segment stay separate, and a segment containing `(`, `|`, or `)`
 never joins an alternation, so the display never implies a path that does not
 exist.
 
+### Substitutions
+
+`-s` rewrites the values inside every matched block before grouping, using a
+sed-style expression `s/RE/REPL/`. Blocks that differ only in a substituted
+fragment, typically an environment name, then render identically and collapse
+into one group:
+
+```console
+$ ys -r 'env_name$' -s 's/dev\d+/{{ .Release.Namespace }}/' ./envs
+# 2 file(s):
+#   envs/dev1.yaml
+#   envs/dev2.yaml
+envs.(dev1|dev2).env_name: '{{ .Release.Namespace }}'
+---
+# 1 file(s):
+#   envs/sandbox1.yaml
+envs.sandbox1.env_name: sandbox1
+```
+
+The rules:
+
+- Only values are rewritten: the scalars standing in value position anywhere
+  inside the block, i.e. the block itself, a mapping's values, and a sequence's
+  elements, however deeply nested. Mapping keys and the dotted path are never
+  touched.
+- `RE` is a [regular expression](https://pkg.go.dev/regexp/syntax) matched
+  against the scalar's text, without any quoting; every occurrence is replaced.
+  Only `RE` is a regexp: `REPL` is inserted verbatim, with no `$1` capture
+  references, so a replacement like `$DATABASE_URL` needs no escaping.
+- The delimiter is the character after `s`: `/` by convention, but any character
+  works when the pattern itself contains a slash, e.g.
+  `-s 's|http://dev\d+/|http://x/|'`. A backslash makes the delimiter literal
+  inside `RE` or `REPL`.
+- Repeat `-s` to chain substitutions; they apply in order, each seeing the
+  previous one's output.
+- A scalar changed by a substitution becomes a string whatever its type was, and
+  is quoted as YAML requires, which is why the Helm template above prints as
+  `'{{ .Release.Namespace }}'`.
+
+Substituting erases differences by design: a `dev3` URL accidentally left in
+`dev4`'s file is exactly what the replacement papers over, so the two files
+group together instead of standing out. Run the same search without `-s` when
+you need to see the raw drift.
+
 ### Examples
 
 ```sh
@@ -157,6 +205,9 @@ ys -p resources.limits.cpu ./prod ./staging
 
 # Anything under logging that ends in level or format.
 ys -r 'logging\.(level|format)$' ./envs
+
+# Collapse per-environment names into one templated block.
+ys -r 'env_name$' -s 's/dev\d+/{{ .Release.Namespace }}/' ./envs
 
 # Force color through a pager.
 ys -c image ./envs | less -R
@@ -215,7 +266,7 @@ environment variable to opt out globally.
 | Code | Meaning |
 | --- | --- |
 | `0` | success |
-| `2` | usage error: missing arguments or an invalid regexp |
+| `2` | usage error: missing arguments, an invalid regexp, or an invalid substitution |
 | `130` | interrupted (Ctrl+C) |
 
 ## Development

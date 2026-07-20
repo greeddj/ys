@@ -63,8 +63,8 @@ func isYAML(p string) bool {
 }
 
 // scanFile decodes every YAML document in file and returns the blocks whose
-// dotted path matches.
-func scanFile(file string, match matcher) ([]hit, error) {
+// dotted path matches, with subs applied to each block's values.
+func scanFile(file string, match matcher, subs []subst) ([]hit, error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
@@ -79,30 +79,30 @@ func scanFile(file string, match matcher) ([]hit, error) {
 			}
 			return nil, err
 		}
-		walk(&doc, nil, match, &hits)
+		walk(&doc, nil, match, subs, &hits)
 	}
 	return hits, nil
 }
 
 // walk visits every node, recording a hit whenever its dotted path matches.
-func walk(n *yaml.Node, path []string, match matcher, out *[]hit) {
+func walk(n *yaml.Node, path []string, match matcher, subs []subst, out *[]hit) {
 	switch n.Kind {
 	case yaml.DocumentNode:
 		for _, c := range n.Content {
-			walk(c, path, match, out)
+			walk(c, path, match, subs, out)
 		}
 	case yaml.MappingNode:
-		check(n, path, match, out)
+		check(n, path, match, subs, out)
 		for i := 0; i+1 < len(n.Content); i += 2 {
-			walk(n.Content[i+1], childPath(path, n.Content[i].Value), match, out)
+			walk(n.Content[i+1], childPath(path, n.Content[i].Value), match, subs, out)
 		}
 	case yaml.SequenceNode:
-		check(n, path, match, out)
+		check(n, path, match, subs, out)
 		for i, c := range n.Content {
-			walk(c, childPath(path, strconv.Itoa(i)), match, out)
+			walk(c, childPath(path, strconv.Itoa(i)), match, subs, out)
 		}
 	case yaml.ScalarNode:
-		check(n, path, match, out)
+		check(n, path, match, subs, out)
 	}
 }
 
@@ -115,9 +115,9 @@ func childPath(path []string, seg string) []string {
 }
 
 // check appends a hit when the node at path matches and renders cleanly. Only
-// the matched value is normalized, never the document, so the indexes in a path
-// keep pointing at the element the file really holds there.
-func check(n *yaml.Node, path []string, match matcher, out *[]hit) {
+// the matched value is normalized and substituted, never the document, so the
+// indexes in a path keep pointing at the element the file really holds there.
+func check(n *yaml.Node, path []string, match matcher, subs []subst, out *[]hit) {
 	if len(path) == 0 {
 		return
 	}
@@ -125,7 +125,7 @@ func check(n *yaml.Node, path []string, match matcher, out *[]hit) {
 	if !match(dotted, path[len(path)-1]) {
 		return
 	}
-	node := normalize(n)
+	node := normalize(n, subs)
 	value, err := renderValue(node)
 	if err != nil {
 		return
