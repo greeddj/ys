@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
@@ -40,10 +41,64 @@ func TestParseSubApplies(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseSub(%q): %v", tt.expr, err)
 			}
-			if got := applySubs(tt.in, []subst{sub}); got != tt.want {
+			if got := applySubs(tt.in, nil, []subst{sub}); got != tt.want {
 				t.Errorf("applySubs(%q, %q) = %q, want %q", tt.in, tt.expr, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestParseSubAddresses covers the sed-style address in front of a
+// substitution: it selects by the value's whole dotted path, the same text -r
+// matches, and ! inverts the selection.
+func TestParseSubAddresses(t *testing.T) {
+	tests := []struct {
+		name string
+		expr string
+		path string
+		in   string
+		want string
+	}{
+		{"selects the key above the value", `/memory/s/\d+/N/`, "limits.memory", "2Gi", "NGi"},
+		{"leaves a sibling key alone", `/memory/s/\d+/N/`, "limits.cpu", "2", "2"},
+		{"reaches an ancestor", `/\.api\./s/\d+/N/`, "services.api.args.0", "8080", "N"},
+		{"skips what the ancestor excludes", `/\.api\./s/\d+/N/`, "services.worker.args.0", "9090", "9090"},
+		{"addresses a sequence index", `/args\.0$/s/\d+/N/`, "services.api.args.0", "8080", "N"},
+		{"an index it does not name is skipped", `/args\.0$/s/\d+/N/`, "services.api.args.1", "3", "3"},
+		{"matches the block's own path", `/^db\.timeout$/s/\d+/N/`, "db.timeout", "30s", "Ns"},
+		{"negated address skips its match", `/memory/!s/\d+/N/`, "limits.memory", "2Gi", "2Gi"},
+		{"negated address takes the rest", `/memory/!s/\d+/N/`, "limits.cpu", "2", "N"},
+		{"custom address delimiter", `|memory|s/\d+/N/`, "limits.memory", "2Gi", "NGi"},
+		{"escaped delimiter inside the address", `/a\/b/s/x/y/`, "a/b.k", "x", "y"},
+		{"whitespace around address and bang", " /memory/ ! s/x/y/ ", "limits.cpu", "x", "y"},
+		{"escaped metacharacter delimiter is literal", `|a\|b|s/x/y/`, "svc.a|b.k", "x", "y"},
+		{"and does not alternate the address", `|memory\|cpu|s/x/y/`, "limits.cpu", "x", "x"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sub, err := parseSub(tt.expr)
+			if err != nil {
+				t.Fatalf("parseSub(%q): %v", tt.expr, err)
+			}
+			got := applySubs(tt.in, strings.Split(tt.path, "."), []subst{sub})
+			if got != tt.want {
+				t.Errorf("applySubs(%q) at %q with %q = %q, want %q", tt.in, tt.path, tt.expr, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestParseSubUnaddressedIgnoresPath keeps the plain form path-blind: without
+// an address a substitution reaches every value, wherever it sits.
+func TestParseSubUnaddressedIgnoresPath(t *testing.T) {
+	sub, err := parseSub(`s/\d+/N/`)
+	if err != nil {
+		t.Fatalf("parseSub: %v", err)
+	}
+	for _, path := range [][]string{nil, {"a"}, {"deeply", "nested", "0", "key"}} {
+		if got := applySubs("2Gi", path, []subst{sub}); got != "NGi" {
+			t.Errorf("applySubs at %q = %q, want %q", path, got, "NGi")
+		}
 	}
 }
 
@@ -67,6 +122,14 @@ func TestParseSubErrors(t *testing.T) {
 		{"dangling backslash", `s/a/b\`},
 		{"whitespace only", "   "},
 		{"padding does not complete an expression", " s/a/b "},
+		{"unterminated address", "/addr"},
+		{"empty address", "//s/a/b/"},
+		{"bad address regexp", "/((/s/a/b/"},
+		{"address without a substitution", "/addr/"},
+		{"address followed by another command", "/addr/x/a/b/"},
+		{"backslash address delimiter", `\a\s/x/y/`},
+		{"dangling backslash in the address", `/a\`},
+		{"negation without a substitution", "/addr/!"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,7 +147,7 @@ func TestApplySubsInOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseSubs: %v", err)
 	}
-	if got := applySubs("dev1", subs); got != "PROD" {
+	if got := applySubs("dev1", nil, subs); got != "PROD" {
 		t.Errorf("applySubs chained = %q, want %q", got, "PROD")
 	}
 }
@@ -102,7 +165,7 @@ func substituted(t *testing.T, src string, exprs ...string) string {
 	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
 		t.Fatalf("unmarshal %q: %v", src, err)
 	}
-	out, err := renderValue(normalize(doc.Content[0], subs))
+	out, err := renderValue(normalize(doc.Content[0], nil, subs))
 	if err != nil {
 		t.Fatalf("render %q: %v", src, err)
 	}

@@ -19,10 +19,12 @@ type Options struct {
 	Key string
 	// Roots are the files and directories to scan.
 	Roots []string
-	// Subs are sed-style substitution expressions, s/RE/REPL/, applied in
-	// order to the values inside each matched block before grouping, so blocks
-	// differing only in, say, an environment name collapse into one. Keys and
-	// paths are never rewritten.
+	// Subs are sed-style substitution expressions, [/ADDR/[!]]s/RE/REPL/,
+	// applied in order to the values inside each matched block before grouping,
+	// so blocks differing only in, say, an environment name collapse into one.
+	// A substitution carrying an address reaches only the values whose whole
+	// dotted path ADDR matches, the same text RegexMode matches against, and !
+	// inverts that. Keys and paths are never rewritten.
 	Subs []string
 	// RegexMode matches Key as a regexp against the full dotted path. Paths of
 	// equal depth that differ in one segment and carry an identical value are

@@ -135,6 +135,59 @@ func TestRunSubstitutionCollapsesValues(t *testing.T) {
 	}
 }
 
+// TestRunAddressedSubstitution is the end-to-end promise of an addressed -s:
+// the rewrite reaches only the values whose dotted path the address selects, so
+// two files collapse on the value that was normalized while the sibling key
+// they already agreed on stays exactly as they hold it. With ! the selection
+// flips and the blocks stay apart, since what still differs is untouched.
+func TestRunAddressedSubstitution(t *testing.T) {
+	const block = "services:\n  api:\n    resources:\n      limits:\n        cpu: \"1\"\n        memory: %s\n"
+
+	tests := []struct {
+		name string
+		sub  string
+		want string
+	}{
+		{
+			name: "address narrows the rewrite to memory",
+			sub:  `/memory/s/\d+/N/`,
+			want: "# 2 file(s):\n#   %[1]s\n#   %[2]s\n" +
+				"services.api.resources.limits:\n  cpu: \"1\"\n  memory: NGi\n",
+		},
+		{
+			name: "negated address rewrites everything else",
+			sub:  `/memory/!s/\d+/N/`,
+			want: "# 1 file(s):\n#   %[1]s\nservices.api.resources.limits:\n  cpu: N\n  memory: 2Gi\n" +
+				"---\n# 1 file(s):\n#   %[2]s\nservices.api.resources.limits:\n  cpu: N\n  memory: 4Gi\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			prod := writeFile(t, dir, "prod.yaml", fmt.Sprintf(block, "2Gi"))
+			staging := writeFile(t, dir, "staging.yaml", fmt.Sprintf(block, "4Gi"))
+
+			var out, errb bytes.Buffer
+			if err := Run(context.Background(), &out, &errb, Options{
+				Key:       `resources\.limits$`,
+				Roots:     []string{dir},
+				RegexMode: true,
+				Subs:      []string{tt.sub},
+			}); err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+
+			want := fmt.Sprintf(tt.want, prod, staging)
+			if out.String() != want {
+				t.Errorf("output mismatch:\n--- got ---\n%s\n--- want ---\n%s", out.String(), want)
+			}
+			if errb.Len() != 0 {
+				t.Errorf("unexpected stderr: %q", errb.String())
+			}
+		})
+	}
+}
+
 func TestRunBadSubstitution(t *testing.T) {
 	err := Run(context.Background(), &bytes.Buffer{}, &bytes.Buffer{}, Options{
 		Key: "foo", Roots: []string{t.TempDir()}, Subs: []string{"nope"},

@@ -87,7 +87,10 @@ func newCommand() *cli.Command {
 			"path lists the alternatives, e.g. services.(api|worker).resources.limits.\n\n" +
 			"Each -s substitution rewrites the values inside every matched block\n" +
 			"before grouping, so blocks differing only in, say, an environment name\n" +
-			"collapse into one: -s 's/dev\\d+/{{ .Release.Namespace }}/'.",
+			"collapse into one: -s 's/dev\\d+/{{ .Release.Namespace }}/'.\n\n" +
+			"A substitution can be addressed, as in sed, to narrow it to the values\n" +
+			"whose dotted path a regexp selects, or with ! to every other value:\n" +
+			"-s '/memory/s/\\d+Gi/NGi/' or -s '/\\.api\\./!s/\\d+/N/'.",
 		HideHelpCommand:        true,
 		UseShortOptionHandling: true,
 		// Slice flags split their value on commas by default, which would break
@@ -112,7 +115,7 @@ func newCommand() *cli.Command {
 			&cli.StringSliceFlag{
 				Name:    "sub",
 				Aliases: []string{"s"},
-				Usage:   "substitute values inside each block: sed-style 's/RE/REPL/', repeatable",
+				Usage:   "substitute values inside each block: sed-style '[/ADDR/[!]]s/RE/REPL/', repeatable",
 			},
 			&cli.BoolFlag{
 				Name:    "color",

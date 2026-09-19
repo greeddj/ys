@@ -17,7 +17,7 @@ func normalized(t *testing.T, src string) string {
 	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
 		t.Fatalf("unmarshal %q: %v", src, err)
 	}
-	out, err := renderValue(normalize(doc.Content[0], nil))
+	out, err := renderValue(normalize(doc.Content[0], nil, nil))
 	if err != nil {
 		t.Fatalf("render %q: %v", src, err)
 	}
@@ -140,7 +140,7 @@ func TestRenderKeepsALeadingLineBreak(t *testing.T) {
 		t.Errorf("rendering decodes to %q, want %q", back, val.Value)
 	}
 
-	block, err := render("msg", normalize(val, nil))
+	block, err := render("msg", normalize(val, nil, nil))
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestNormalizeKeepsAliases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("render %s: %v", key, err)
 		}
-		after, err := renderValue(normalize(m.Content[i+1], nil))
+		after, err := renderValue(normalize(m.Content[i+1], nil, nil))
 		if err != nil {
 			t.Fatalf("render normalized %s: %v", key, err)
 		}

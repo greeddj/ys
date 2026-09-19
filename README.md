@@ -36,6 +36,8 @@ The most common value is printed first, so the single `legacy` outlier is obviou
 - Sed-style substitutions (`-s 's/dev\d+/{{ .Release.Namespace }}/'`) rewrite the
   values inside each matched block before grouping, collapsing blocks that differ
   only in, say, an environment name.
+- Substitutions take a sed-style address (`-s '/memory/s/\d+Gi/NGi/'`), so a
+  rewrite can be narrowed to the values whose path it names, or inverted with `!`.
 - Notation-insensitive: values that differ only by an incidental `# comment`, by
   quoting (`"x"`, `'x'`, `x`), by flow or block style, or by the order of a
   block's keys and entries are treated as equal.
@@ -98,7 +100,7 @@ or files are reported to stderr and skipped, so one bad file never aborts a run.
 | --- | --- |
 | `-p`, `--path` | match `KEY` as a path suffix, e.g. `http.timeout` |
 | `-r`, `--regexp` | match `KEY` as a regexp over the full dotted path |
-| `-s`, `--sub` | substitute values inside each block: sed-style `s/RE/REPL/`, repeatable |
+| `-s`, `--sub` | substitute values inside each block: sed-style `[/ADDR/[!]]s/RE/REPL/`, repeatable |
 | `-c`, `--color` | force colorized output (default: only on a terminal) |
 | `-n`, `--no-color` | disable colorized output |
 | `-h`, `--help` | show help |
@@ -194,6 +196,80 @@ Substituting erases differences by design: a `dev3` URL accidentally left in
 `dev4`'s file is exactly what the replacement papers over, so the two files
 group together instead of standing out. Run the same search without `-s` when
 you need to see the raw drift.
+
+### Addressed substitutions
+
+A substitution can be narrowed the way sed narrows a command, by putting an
+address in front of it, so that it reaches only some of a block's values:
+
+```
+[/ADDR/[!]]s/RE/REPL/
+```
+
+`ADDR` is a regexp over the **whole dotted path** of the value being rewritten,
+the same text `-r` matches against, so it can name the key directly above a
+value, any ancestor, or a sequence index.
+
+Take two files whose limits agree on `cpu` and differ on `memory`:
+
+```console
+$ ys -r 'resources\.limits$' ./envs
+# 1 file(s):
+#   envs/prod.yaml
+services.api.resources.limits:
+  cpu: "1"
+  memory: 2Gi
+---
+# 1 file(s):
+#   envs/staging.yaml
+services.api.resources.limits:
+  cpu: "1"
+  memory: 4Gi
+```
+
+A plain substitution collapses them into one group, but rewrites `cpu` on the
+way, so the output no longer says what the files agreed on:
+
+```console
+$ ys -r 'resources\.limits$' -s 's/\d+/N/' ./envs
+# 2 file(s):
+#   envs/prod.yaml
+#   envs/staging.yaml
+services.api.resources.limits:
+  cpu: N
+  memory: NGi
+```
+
+Addressing it to `memory` collapses the same two blocks and leaves `cpu`
+reporting what they hold:
+
+```console
+$ ys -r 'resources\.limits$' -s '/memory/s/\d+/N/' ./envs
+# 2 file(s):
+#   envs/prod.yaml
+#   envs/staging.yaml
+services.api.resources.limits:
+  cpu: "1"
+  memory: NGi
+```
+
+The rules:
+
+- The path an address sees is the full one, from the document root. For the
+  `memory` above it is `services.api.resources.limits.memory`, so `/memory/`,
+  `/limits\.memory$/` and `/\.api\./` all select it.
+- A sequence element is named by its index, as everywhere else in ys, so
+  `-s '/args\.0$/s/\d+/N/'` rewrites only the first element of `args`.
+- When the matched block is a scalar, the address is matched against the
+  block's own path: `ys -p db.timeout -s '/^db\.timeout$/s/\d+/N/'`.
+- `!` between the address and the `s` inverts it:
+  `-s '/memory/!s/\d+/N/'` rewrites every value except `memory`.
+- The address carries its own delimiter, the character it opens with, so `/a/`
+  and `|a|` are the same address and a path regexp full of slashes needs no
+  escaping. A backslash makes that delimiter literal inside the address, so
+  `-s '|a\|b|s/x/y/'` addresses a path segment actually named `a|b`.
+- An address belongs to its own `-s`. Chained substitutions each carry their
+  own, or none.
 
 ### Examples
 

@@ -125,7 +125,7 @@ func check(n *yaml.Node, path []string, match matcher, subs []subst, out *[]hit)
 	if !match(dotted, path[len(path)-1]) {
 		return
 	}
-	node := normalize(n, subs)
+	node := normalize(n, path, subs)
 	value, err := renderValue(node)
 	if err != nil {
 		return

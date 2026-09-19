@@ -2,6 +2,7 @@ package app
 
 import (
 	"sort"
+	"strconv"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -21,14 +22,34 @@ import (
 // applied before the surrounding collection is sorted, so grouping and ordering
 // both see the substituted text. Keys are never rewritten. A scalar changed by
 // a substitution becomes a string, whatever its original type was.
-func normalize(n *yaml.Node, subs []subst) *yaml.Node {
-	return normalizeIn(n, subs, true)
+//
+// path is where the block itself sits, so that an addressed substitution sees
+// the same dotted path the scan matched against, extended by the key or index
+// of every value below it.
+func normalize(n *yaml.Node, path []string, subs []subst) *yaml.Node {
+	z := normalizer{subs: subs}
+	for _, s := range subs {
+		if s.addr != nil {
+			z.addressed = true
+			break
+		}
+	}
+	if !z.addressed {
+		path = nil
+	}
+	return z.node(n, path, true)
 }
 
-// normalizeIn copies n applying the normalize rules, substituting only while
-// value stays true: it starts true at the matched block and is dropped for a
-// mapping key and everything inside it.
-func normalizeIn(n *yaml.Node, subs []subst, value bool) *yaml.Node {
+// normalizer carries down what the copy needs besides the node itself.
+type normalizer struct {
+	subs      []subst
+	addressed bool
+}
+
+// node copies n applying the normalize rules, substituting only while value
+// stays true: it starts true at the matched block and is dropped for a mapping
+// key and everything inside it.
+func (z normalizer) node(n *yaml.Node, path []string, value bool) *yaml.Node {
 	out := &yaml.Node{
 		Kind:   n.Kind,
 		Tag:    n.Tag,
@@ -37,7 +58,7 @@ func normalizeIn(n *yaml.Node, subs []subst, value bool) *yaml.Node {
 		Alias:  n.Alias,
 	}
 	if value && n.Kind == yaml.ScalarNode {
-		if v := applySubs(n.Value, subs); v != n.Value {
+		if v := applySubs(n.Value, path, z.subs); v != n.Value {
 			out.Value = v
 			out.Tag = "!!str"
 		}
@@ -47,7 +68,7 @@ func normalizeIn(n *yaml.Node, subs []subst, value bool) *yaml.Node {
 	}
 	out.Content = make([]*yaml.Node, len(n.Content))
 	for i, c := range n.Content {
-		out.Content[i] = normalizeIn(c, subs, value && (n.Kind != yaml.MappingNode || i%2 == 1))
+		out.Content[i] = z.node(c, z.childPath(n, path, i), value && (n.Kind != yaml.MappingNode || i%2 == 1))
 	}
 	switch n.Kind {
 	case yaml.MappingNode:
@@ -56,6 +77,27 @@ func normalizeIn(n *yaml.Node, subs []subst, value bool) *yaml.Node {
 		sortEntries(out.Content, 1)
 	}
 	return out
+}
+
+// childPath names where content[i] sits, the way the scan names it: a mapping's
+// value takes its key, a sequence's element takes its index. Sorting comes
+// after this, so an index still counts positions in the file. Only an addressed
+// substitution ever reads a path, so an unaddressed copy builds none.
+func (z normalizer) childPath(n *yaml.Node, path []string, i int) []string {
+	if !z.addressed {
+		return nil
+	}
+	switch n.Kind {
+	case yaml.MappingNode:
+		if i%2 == 0 {
+			return path // a key is never substituted, so its own path goes unused
+		}
+		return childPath(path, n.Content[i-1].Value)
+	case yaml.SequenceNode:
+		return childPath(path, strconv.Itoa(i))
+	default:
+		return path
+	}
 }
 
 // entry is one collection element together with the text ordering it.
