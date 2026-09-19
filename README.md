@@ -182,7 +182,8 @@ The rules:
 - The delimiter is the character after `s`: `/` by convention, but any character
   works when the pattern itself contains a slash, e.g.
   `-s 's|http://dev\d+/|http://x/|'`. A backslash makes the delimiter literal
-  inside `RE` or `REPL`.
+  inside `RE` or `REPL`, as it does in sed, so `-s 's|a\|b|X|'` replaces the
+  text `a|b` rather than either letter.
 - Repeat `-s` to chain substitutions; they apply in order, each seeing the
   previous one's output.
 - A scalar changed by a substitution becomes a string whatever its type was, and

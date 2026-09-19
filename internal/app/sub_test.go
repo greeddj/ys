@@ -29,6 +29,10 @@ func TestParseSubApplies(t *testing.T) {
 		{"whitespace on both sides ignored", "\t s/dev[0-9]+/NS/ \n", "dev12", "NS"},
 		{"space delimiter survives trimming", "s dev[0-9]+ NS ", "dev12", "NS"},
 		{"tab delimiter survives trimming", "s\tdev[0-9]+\tNS\t", "dev12", "NS"},
+		{"escaped delimiter is literal in RE even as a metacharacter", `s|a\|b|X|`, "a|b", "X"},
+		{"an escaped metacharacter delimiter does not alternate", `s|a\|b|X|`, "b", "b"},
+		{"an unescaped metacharacter still alternates", `s/a|b/X/`, "b", "X"},
+		{"escaped delimiter is literal text in REPL", `s|x|a\|b|`, "x", "a|b"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

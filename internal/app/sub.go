@@ -35,9 +35,11 @@ func parseSubs(exprs []string) ([]subst, error) {
 // parseSub parses one s<delim>RE<delim>REPL<delim> expression, ignoring any
 // whitespace around it. The delimiter is the character right after the leading
 // s: / by convention, but any character works, e.g. s|http://a/|http://b/|.
-// Inside RE and REPL a backslash before the delimiter makes it literal; every
-// other escape is left alone, so regexp escapes like \d pass through. Only RE
-// is a regexp: REPL is inserted verbatim, with no $1 capture references, so a
+// Inside RE and REPL a backslash before the delimiter makes it literal, as sed
+// has it: in RE the character reaches the regexp engine already escaped, so a
+// delimiter that is a regexp metacharacter still means itself. Every other
+// escape is left alone, so regexp escapes like \d pass through. Only RE is a
+// regexp: REPL is inserted verbatim, with no $1 capture references, so a
 // replacement may carry $ freely.
 func parseSub(expr string) (subst, error) {
 	fail := func(msg string) (subst, error) {
@@ -51,21 +53,28 @@ func parseSub(expr string) (subst, error) {
 	if delim == utf8.RuneError || delim == '\\' {
 		return fail("bad delimiter")
 	}
-	parts, tail, err := splitSub(e[1+size:], delim)
+	pat, rest, closed, err := cutSub(e[1+size:], delim, regexp.QuoteMeta(string(delim)))
 	if err != nil {
 		return fail(err.Error())
 	}
-	if len(parts) != 2 || tail != "" {
+	if !closed {
 		return fail("not exactly two delimited parts")
 	}
-	if parts[0] == "" {
+	repl, tail, closed, err := cutSub(rest, delim, string(delim))
+	if err != nil {
+		return fail(err.Error())
+	}
+	if !closed || tail != "" {
+		return fail("not exactly two delimited parts")
+	}
+	if pat == "" {
 		return fail("empty pattern")
 	}
-	re, err := regexp.Compile(parts[0])
+	re, err := regexp.Compile(pat)
 	if err != nil {
 		return subst{}, fmt.Errorf("bad substitution %q: %w", expr, err)
 	}
-	return subst{re: re, repl: parts[1]}, nil
+	return subst{re: re, repl: repl}, nil
 }
 
 // trimSubSpace drops the whitespace a shell can leave around an expression.
@@ -84,33 +93,38 @@ func trimSubSpace(expr string) string {
 	return strings.TrimRightFunc(e, unicode.IsSpace)
 }
 
-// splitSub cuts s into its delimiter-terminated parts, unescaping \<delim> and
-// keeping every other backslash escape verbatim. tail is whatever followed the
-// last closed part; a complete substitution leaves it empty.
-func splitSub(s string, delim rune) (parts []string, tail string, err error) {
+// cutSub reads the next delimiter-terminated part from the front of s. A
+// backslash before the delimiter keeps it from closing the part and stands for
+// literal instead, which the caller spells: the delimiter itself in text, its
+// regexp escape in a pattern. Every other backslash escape is kept verbatim, so
+// regexp escapes like \d pass through. rest is whatever followed the delimiter
+// that closed the part. closed reports whether one did: when it did not, part
+// holds the unterminated remainder and rest is empty.
+func cutSub(s string, delim rune, literal string) (part, rest string, closed bool, err error) {
 	var b strings.Builder
 	esc := false
-	for _, r := range s {
+	for i, r := range s {
 		switch {
 		case esc:
-			if r != delim {
+			if r == delim {
+				b.WriteString(literal)
+			} else {
 				b.WriteRune('\\')
+				b.WriteRune(r)
 			}
-			b.WriteRune(r)
 			esc = false
 		case r == '\\':
 			esc = true
 		case r == delim:
-			parts = append(parts, b.String())
-			b.Reset()
+			return b.String(), s[i+utf8.RuneLen(r):], true, nil
 		default:
 			b.WriteRune(r)
 		}
 	}
 	if esc {
-		return nil, "", fmt.Errorf("dangling backslash")
+		return "", "", false, fmt.Errorf("dangling backslash")
 	}
-	return parts, b.String(), nil
+	return b.String(), "", false, nil
 }
 
 // applySubs runs every substitution over s in order, each one seeing the
