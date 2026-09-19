@@ -271,7 +271,7 @@ environment variable to opt out globally.
 
 ## Development
 
-Requires Go 1.26 and [`just`](https://github.com/casey/just). Dependencies are
+Requires Go 1.27 and [`just`](https://github.com/casey/just). Dependencies are
 vendored.
 
 ```sh
