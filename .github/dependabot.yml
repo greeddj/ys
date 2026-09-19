@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    # Only two requirements here are direct, and version updates reach just
+    # those by default. The go tool directives name staticcheck, govulncheck
+    # and fieldalignment, which go.mod records as indirect because nothing
+    # imports them, so without this they would never be offered an update.
+    allow:
+      - dependency-type: "all"
+    groups:
+      go-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
