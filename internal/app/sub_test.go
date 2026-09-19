@@ -24,6 +24,11 @@ func TestParseSubApplies(t *testing.T) {
 		{"replacement is literal, not expanded", `s/dev[0-9]+/$1-$HOME/`, "dev7", "$1-$HOME"},
 		{"empty replacement deletes", `s/-suffix$//`, "name-suffix", "name"},
 		{"template replacement", `s/dev\d+/{{ .Release.Namespace }}/`, "dev1", "{{ .Release.Namespace }}"},
+		{"trailing whitespace ignored", "s/dev[0-9]+/NS/ ", "dev12", "NS"},
+		{"leading whitespace ignored", " s/dev[0-9]+/NS/", "dev12", "NS"},
+		{"whitespace on both sides ignored", "\t s/dev[0-9]+/NS/ \n", "dev12", "NS"},
+		{"space delimiter survives trimming", "s dev[0-9]+ NS ", "dev12", "NS"},
+		{"tab delimiter survives trimming", "s\tdev[0-9]+\tNS\t", "dev12", "NS"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -56,6 +61,8 @@ func TestParseSubErrors(t *testing.T) {
 		{"empty pattern", "s//b/"},
 		{"bad regexp", "s/(/b/"},
 		{"dangling backslash", `s/a/b\`},
+		{"whitespace only", "   "},
+		{"padding does not complete an expression", " s/a/b "},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

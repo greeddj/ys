@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -31,25 +32,26 @@ func parseSubs(exprs []string) ([]subst, error) {
 	return subs, nil
 }
 
-// parseSub parses one s<delim>RE<delim>REPL<delim> expression. The delimiter
-// is the character right after the leading s: / by convention, but any
-// character works, e.g. s|http://a/|http://b/|. Inside RE and REPL a
-// backslash before the delimiter makes it literal; every other escape is left
-// alone, so regexp escapes like \d pass through. Only RE is a regexp: REPL is
-// inserted verbatim, with no $1 capture references, so a replacement may carry
-// $ freely.
+// parseSub parses one s<delim>RE<delim>REPL<delim> expression, ignoring any
+// whitespace around it. The delimiter is the character right after the leading
+// s: / by convention, but any character works, e.g. s|http://a/|http://b/|.
+// Inside RE and REPL a backslash before the delimiter makes it literal; every
+// other escape is left alone, so regexp escapes like \d pass through. Only RE
+// is a regexp: REPL is inserted verbatim, with no $1 capture references, so a
+// replacement may carry $ freely.
 func parseSub(expr string) (subst, error) {
 	fail := func(msg string) (subst, error) {
 		return subst{}, fmt.Errorf("bad substitution %q: %s, want s/RE/REPL/", expr, msg)
 	}
-	if len(expr) < 2 || expr[0] != 's' {
+	e := trimSubSpace(expr)
+	if len(e) < 2 || e[0] != 's' {
 		return fail("no s<delimiter> prefix")
 	}
-	delim, size := utf8.DecodeRuneInString(expr[1:])
+	delim, size := utf8.DecodeRuneInString(e[1:])
 	if delim == utf8.RuneError || delim == '\\' {
 		return fail("bad delimiter")
 	}
-	parts, tail, err := splitSub(expr[1+size:], delim)
+	parts, tail, err := splitSub(e[1+size:], delim)
 	if err != nil {
 		return fail(err.Error())
 	}
@@ -64,6 +66,22 @@ func parseSub(expr string) (subst, error) {
 		return subst{}, fmt.Errorf("bad substitution %q: %w", expr, err)
 	}
 	return subst{re: re, repl: parts[1]}, nil
+}
+
+// trimSubSpace drops the whitespace a shell can leave around an expression.
+// Which side survived used to depend on how the flag was spelled, so neither
+// is meaningful. The one exception is a whitespace delimiter, which is legal
+// here: there the run at the end closes the last part instead of padding the
+// expression, and the expression is left as written.
+func trimSubSpace(expr string) string {
+	e := strings.TrimLeftFunc(expr, unicode.IsSpace)
+	if len(e) < 2 {
+		return e
+	}
+	if delim, _ := utf8.DecodeRuneInString(e[1:]); unicode.IsSpace(delim) {
+		return e
+	}
+	return strings.TrimRightFunc(e, unicode.IsSpace)
 }
 
 // splitSub cuts s into its delimiter-terminated parts, unescaping \<delim> and
