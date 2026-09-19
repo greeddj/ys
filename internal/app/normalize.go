@@ -3,7 +3,7 @@ package app
 import (
 	"sort"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // normalize returns a canonical deep copy of n, so that values differing only in

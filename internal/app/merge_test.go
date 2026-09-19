@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestClusterPaths(t *testing.T) {
@@ -139,7 +139,7 @@ func TestRunRegexpDottedKeyNotMergedWithNesting(t *testing.T) {
 func TestRenderKeepsOneLineShapeForLongKeys(t *testing.T) {
 	val := &yaml.Node{Kind: yaml.ScalarNode, Value: "v"}
 
-	// Around the yaml.v3 simple-key limit the shape must not change.
+	// Around the emitter's simple-key limit the shape must not change.
 	for _, n := range []int{yamlMaxSimpleKey, yamlMaxSimpleKey + 1, 3 * yamlMaxSimpleKey} {
 		key := strings.Repeat("k", n)
 		block, err := render(key, val)

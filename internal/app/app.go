@@ -10,7 +10,7 @@ import (
 	"io"
 	"sort"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // Options configures a single search run.

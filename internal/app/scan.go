@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // collectFiles gathers the unique YAML files reachable from roots, walking
@@ -148,7 +148,7 @@ func renderValue(val *yaml.Node) (string, error) {
 	return sb.String(), nil
 }
 
-// yamlMaxSimpleKey is the yaml.v3 emitter's limit on simple (inline) mapping
+// yamlMaxSimpleKey is the yaml emitter's limit on simple (inline) mapping
 // keys in bytes; longer keys switch to the explicit "? key" form (see
 // yaml_emitter_check_simple_key in emitterc.go).
 const yamlMaxSimpleKey = 128

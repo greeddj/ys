@@ -5,6 +5,15 @@ run:
 
 linters:
   default: standard
+  enable:
+    - depguard
+  settings:
+    depguard:
+      rules:
+        yaml:
+          deny:
+            - pkg: gopkg.in/yaml.v3
+              desc: archived upstream, use the maintained fork go.yaml.in/yaml/v3
 
 formatters:
   enable:

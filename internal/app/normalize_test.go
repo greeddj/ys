@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // normalized decodes a one-document YAML value and returns its canonical
@@ -107,6 +107,45 @@ func TestNormalizeRendering(t *testing.T) {
 				t.Errorf("normalize(%q) = %q, want %q", tt.src, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestRenderKeepsALeadingLineBreak pins what the emitter does with a value that
+// begins with a line break. A block header cannot carry that break on its own,
+// so a blank line has to follow it; without one the block decodes back to a
+// value the file does not hold, and the canonical text ys groups by would
+// misstate it.
+func TestRenderKeepsALeadingLineBreak(t *testing.T) {
+	const src = "|2\n\n  hello\n"
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	val := doc.Content[0]
+	if want := "\nhello\n"; val.Value != want {
+		t.Fatalf("fixture decodes to %q, want %q", val.Value, want)
+	}
+
+	got := normalized(t, src)
+	if want := "|2\n\n  hello\n"; got != want {
+		t.Errorf("renderValue = %q, want %q", got, want)
+	}
+
+	var back string
+	if err := yaml.Unmarshal([]byte(got), &back); err != nil {
+		t.Fatalf("decode rendering: %v", err)
+	}
+	if back != val.Value {
+		t.Errorf("rendering decodes to %q, want %q", back, val.Value)
+	}
+
+	block, err := render("msg", normalize(val, nil))
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if want := "msg: |2\n\n  hello"; block != want {
+		t.Errorf("render = %q, want %q", block, want)
 	}
 }
 
