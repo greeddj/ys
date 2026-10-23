@@ -202,7 +202,7 @@ you need to see the raw drift.
 A substitution can be narrowed the way sed narrows a command, by putting an
 address in front of it, so that it reaches only some of a block's values:
 
-```
+```text
 [/ADDR/[!]]s/RE/REPL/
 ```
 
