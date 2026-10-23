@@ -101,6 +101,12 @@ func newCommand() *cli.Command {
 		// main owns the exit codes: suppress the framework's default os.Exit so
 		// every error flows back through run() below.
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
+		// A bad flag is a usage error: show help and exit 2, as missing
+		// arguments do, instead of the framework's exit 1.
+		OnUsageError: func(_ context.Context, cmd *cli.Command, err error, _ bool) error {
+			_ = cli.ShowRootCommandHelp(cmd)
+			return cli.Exit(fmt.Sprintf("ys: %v", err), 2)
+		},
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
 				Name:    "path",

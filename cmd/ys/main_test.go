@@ -3,11 +3,42 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/urfave/cli/v3"
 )
+
+// TestBadFlagExitsTwo guards OnUsageError: without it a bad flag reaches run()
+// as a plain error and exits 1, not the documented usage code 2.
+func TestBadFlagExitsTwo(t *testing.T) {
+	for _, args := range [][]string{
+		{"-x", "foo", "."},
+		{"--sub"},
+		{"-sr", `s/a/b/`, "foo", "."},
+	} {
+		var out bytes.Buffer
+		cmd := newCommand()
+		cmd.Writer = &out
+		cmd.ErrWriter = &bytes.Buffer{}
+		err := cmd.Run(context.Background(), append([]string{"ys"}, args...))
+
+		var exitErr cli.ExitCoder
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 2 {
+			t.Errorf("run %v: want an exit code 2 error, got %v", args, err)
+			continue
+		}
+		if !strings.HasPrefix(exitErr.Error(), "ys: ") {
+			t.Errorf("run %v: want a ys: message, got %q", args, exitErr.Error())
+		}
+		if !strings.Contains(out.String(), "USAGE:") {
+			t.Errorf("run %v: want help on stdout, got %q", args, out.String())
+		}
+	}
+}
 
 // TestColorFlagWiring guards the -c/-n flag names against the wiring drifting
 // from the registered flag names: an unknown name silently reads as false and

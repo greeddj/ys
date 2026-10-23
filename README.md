@@ -343,7 +343,7 @@ environment variable to opt out globally.
 | Code | Meaning |
 | --- | --- |
 | `0` | success |
-| `2` | usage error: missing arguments, an invalid regexp, or an invalid substitution |
+| `2` | usage error: an unknown flag, a flag without its value, missing arguments, an invalid regexp, or an invalid substitution |
 | `130` | interrupted (Ctrl+C) |
 
 ## Development
