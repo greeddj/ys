@@ -84,12 +84,12 @@ homebrew_casks:
     license: MIT
     binaries:
       - ys
-    custom_block: |
-      postflight_steps do
-        on_macos do
-          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/ys"]
-        end
-      end
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/ys"]
+          end
 
 release:
   github:
