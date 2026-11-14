@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // collectFiles gathers the unique YAML files reachable from roots, walking
@@ -136,13 +136,21 @@ func check(n *yaml.Node, path []string, match matcher, subs []subst, out *[]hit)
 // renderValue encodes val on its own, giving every value a canonical text used
 // to recognize identical values found at different paths.
 func renderValue(val *yaml.Node) (string, error) {
+	return encode(val)
+}
+
+// encode dumps n with the v3 defaults, a 2-space indent and no line wrapping,
+// so a long value stays on one line as the classic Marshal writes it.
+func encode(n *yaml.Node) (string, error) {
 	var sb strings.Builder
-	enc := yaml.NewEncoder(&sb)
-	enc.SetIndent(2)
-	if err := enc.Encode(val); err != nil {
+	d, err := yaml.NewDumper(&sb, yaml.WithV3Defaults(), yaml.WithIndent(2), yaml.WithLineWidth(-1))
+	if err != nil {
 		return "", err
 	}
-	if err := enc.Close(); err != nil {
+	if err := d.Dump(n); err != nil {
+		return "", err
+	}
+	if err := d.Close(); err != nil {
 		return "", err
 	}
 	return sb.String(), nil
@@ -150,7 +158,7 @@ func renderValue(val *yaml.Node) (string, error) {
 
 // yamlMaxSimpleKey is the yaml emitter's limit on simple (inline) mapping
 // keys in bytes; longer keys switch to the explicit "? key" form (see
-// yaml_emitter_check_simple_key in emitterc.go).
+// Emitter.checkSimpleKey in internal/libyaml/emitter.go).
 const yamlMaxSimpleKey = 128
 
 // render encodes val as a single "path: value" YAML block.
@@ -165,16 +173,11 @@ func render(path string, val *yaml.Node) (string, error) {
 			val,
 		},
 	}
-	var sb strings.Builder
-	enc := yaml.NewEncoder(&sb)
-	enc.SetIndent(2)
-	if err := enc.Encode(doc); err != nil {
+	out, err := encode(doc)
+	if err != nil {
 		return "", err
 	}
-	if err := enc.Close(); err != nil {
-		return "", err
-	}
-	return strings.TrimRight(sb.String(), "\n"), nil
+	return strings.TrimRight(out, "\n"), nil
 }
 
 // renderLongKey keeps the documented one-line "path: value" shape for paths

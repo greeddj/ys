@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strconv"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // normalize returns a canonical deep copy of n, so that values differing only in

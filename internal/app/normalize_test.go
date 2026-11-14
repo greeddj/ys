@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.yaml.in/yaml/v3"
+	"go.yaml.in/yaml/v4"
 )
 
 // normalized decodes a one-document YAML value and returns its canonical
@@ -87,6 +87,7 @@ func TestNormalizeDistinctValues(t *testing.T) {
 // TestNormalizeRendering pins the canonical text itself: sorted, unquoted, and
 // still quoted wherever plain text would change the value.
 func TestNormalizeRendering(t *testing.T) {
+	long := strings.Repeat("word ", 30) + "end"
 	tests := []struct {
 		name string
 		src  string
@@ -98,6 +99,9 @@ func TestNormalizeRendering(t *testing.T) {
 		{"requotes a string key that reads as a merge", `{"<<": x}`, "\"<<\": x\n"},
 		{"requotes a string that reads as a merge", `"<<"`, "\"<<\"\n"},
 		{"keeps a merge key plain", "{<<: {a: 1}}", "<<:\n  a: 1\n"},
+		{"never wraps a long value", long, long + "\n"},
+		{"marks the indent of a block that starts with a tab", `"\tx\ny"`, "|2-\n  \tx\n  y\n"},
+		{"keeps a space before a line break in a literal block", `"a \nb"`, "|-\n  a \n  b\n"},
 		{"sorts mapping keys", "{b: 2, a: 1}", "a: 1\nb: 2\n"},
 		{"sorts sequence entries", "[c, a, b]", "- a\n- b\n- c\n"},
 		{"sorts keys naturally", "{env10: a, env2: b}", "env2: b\nenv10: a\n"},
@@ -131,7 +135,7 @@ func TestRenderKeepsALeadingLineBreak(t *testing.T) {
 	}
 
 	got := normalized(t, src)
-	if want := "|2\n\n  hello\n"; got != want {
+	if want := "|\n\n  hello\n"; got != want {
 		t.Errorf("renderValue = %q, want %q", got, want)
 	}
 
@@ -147,8 +151,49 @@ func TestRenderKeepsALeadingLineBreak(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if want := "msg: |2\n\n  hello"; block != want {
+	if want := "msg: |\n\n  hello"; block != want {
 		t.Errorf("render = %q, want %q", block, want)
+	}
+}
+
+// TestRenderRoundTrips checks that a value with whitespace at the edge of a
+// line, or too long to fit one screen, decodes back from both renderings.
+func TestRenderRoundTrips(t *testing.T) {
+	values := []string{
+		"\tx\ny",
+		"  x\n\ty",
+		"a \nb",
+		"a\t\nb",
+		"a\nb ",
+		"\nhello\n",
+		strings.Repeat("word ", 30) + "end",
+	}
+	for _, v := range values {
+		n := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}
+
+		got, err := renderValue(n)
+		if err != nil {
+			t.Fatalf("renderValue(%q): %v", v, err)
+		}
+		var back string
+		if err := yaml.Unmarshal([]byte(got), &back); err != nil {
+			t.Fatalf("decode %q: %v", got, err)
+		}
+		if back != v {
+			t.Errorf("renderValue(%q) = %q, decodes to %q", v, got, back)
+		}
+
+		block, err := render("msg", n)
+		if err != nil {
+			t.Fatalf("render(%q): %v", v, err)
+		}
+		var m map[string]string // ys prints each block with Fprintln
+		if err := yaml.Unmarshal([]byte(block+"\n"), &m); err != nil {
+			t.Fatalf("decode %q: %v", block, err)
+		}
+		if m["msg"] != v {
+			t.Errorf("render(%q) = %q, decodes to %q", v, block, m["msg"])
+		}
 	}
 }
 

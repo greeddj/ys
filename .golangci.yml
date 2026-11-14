@@ -13,7 +13,9 @@ linters:
         yaml:
           deny:
             - pkg: gopkg.in/yaml.v3
-              desc: archived upstream, use the maintained fork go.yaml.in/yaml/v3
+              desc: archived upstream, use go.yaml.in/yaml/v4
+            - pkg: go.yaml.in/yaml/v3
+              desc: frozen series, use go.yaml.in/yaml/v4
 
 formatters:
   enable:
